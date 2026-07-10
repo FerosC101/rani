@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { UserPlus, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { UserPlus, X, Image as ImageIcon, Link2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { decodeQrImage } from "../../lib/decodeQrImage";
+import { useWallet } from "../../hooks/useWallet";
 
 const FF = "'DM Sans', sans-serif";
 
@@ -26,6 +28,9 @@ export function AddContactModal({ onClose, onSave }: AddContactModalProps) {
   const [focused, setFocused] = useState<string | null>(null);
   const [hoverSave, setHoverSave] = useState(false);
   const [hoverCancel, setHoverCancel] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const qrFileInputRef = useRef<HTMLInputElement>(null);
+  const { connect, connecting: connectingWallet } = useWallet();
 
   const isValid = name.trim().length > 0 && address.trim().startsWith("G");
 
@@ -33,6 +38,30 @@ export function AddContactModal({ onClose, onSave }: AddContactModalProps) {
     if (!isValid) return;
     onSave?.({ name: name.trim(), address: address.trim(), tag: tag.trim() });
     onClose();
+  };
+
+  const handleQrImageSelected = async (file: File) => {
+    setQrError(null);
+    try {
+      const decoded = await decodeQrImage(file);
+      if (!decoded) {
+        setQrError("Couldn't find a QR code in that image — try a clearer screenshot.");
+        return;
+      }
+      setAddress(decoded);
+    } catch {
+      setQrError("Couldn't read that image file.");
+    }
+  };
+
+  const handleGetFromFreighter = async () => {
+    setQrError(null);
+    const result = await connect();
+    if (!result) {
+      setQrError("Couldn't get an address from Freighter. Make sure it's unlocked.");
+      return;
+    }
+    setAddress(result);
   };
 
   return (
@@ -205,6 +234,77 @@ export function AddContactModal({ onClose, onSave }: AddContactModalProps) {
                     : "rgba(255,255,255,0.1)",
               }}
             />
+
+            {/* QR image upload / Freighter shortcuts — same options as the
+                chat's "add contact" flow, so the manual form isn't a worse
+                path than typing 56 characters by hand. */}
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <input
+                ref={qrFileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleQrImageSelected(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => qrFileInputRef.current?.click()}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  padding: "9px 0",
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(37,99,235,0.2)",
+                  color: "#E2EEFF",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: FF,
+                  cursor: "pointer",
+                }}
+              >
+                <ImageIcon size={13} color="#60A5FA" />
+                Upload QR Image
+              </button>
+              <button
+                type="button"
+                onClick={handleGetFromFreighter}
+                disabled={connectingWallet}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  padding: "9px 0",
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(37,99,235,0.2)",
+                  color: "#E2EEFF",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: FF,
+                  cursor: connectingWallet ? "wait" : "pointer",
+                  opacity: connectingWallet ? 0.6 : 1,
+                }}
+              >
+                <Link2 size={13} color="#60A5FA" />
+                {connectingWallet ? "Connecting…" : "Get from Freighter"}
+              </button>
+            </div>
+
+            {qrError && (
+              <div style={{ color: "#F87171", fontSize: 11.5, fontFamily: FF, marginTop: 7 }}>
+                {qrError}
+              </div>
+            )}
           </FieldGroup>
 
           {/* Field 3 — Tag */}

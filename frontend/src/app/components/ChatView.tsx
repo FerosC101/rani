@@ -1,11 +1,11 @@
 //updated 
 // 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   Mic, Send, Sparkles, Shield, Lock, AlertCircle,
   X, ArrowRight, CheckCircle, ExternalLink, Wallet,
-  Banknote, Clock, ArrowLeftRight,
+  Banknote, Clock, ArrowLeftRight, Image as ImageIcon, Link2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
@@ -14,6 +14,7 @@ import { SEP24Modal } from "./SEP24Modal";
 import { SwapModal } from "./SwapModal";
 //import { buildTransaction, submitTransaction, getBalance, type Contact } from "../../lib/api";
 import { getBalance, addContact, parseCommand, buildTransaction, submitTransaction, type Contact } from "../../lib/api";
+import { decodeQrImage } from "../../lib/decodeQrImage";
 import { useWallet } from "../../hooks/useWallet";
 
 const FF = "'DM Sans', sans-serif";
@@ -73,7 +74,7 @@ export function ChatView({
   /** Called after the transcript above has been consumed, so the parent can clear it. */
   onVoiceTranscriptHandled?: () => void;
 }) {
-  const { publicKey, sign } = useWallet();
+  const { publicKey, sign, connect, connecting: connectingWallet } = useWallet();
   const [state, setState] = useState<ChatState>("landing");
   const [feeXLM, setFeeXLM] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -84,6 +85,8 @@ export function ChatView({
   const [showSEP24, setShowSEP24] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [qrImageError, setQrImageError] = useState<string | null>(null);
+  const qrFileInputRef = useRef<HTMLInputElement>(null);
 
   const [awaiting, setAwaiting] = useState<"recipient" | "amount" | null>(null);
   const [candidates, setCandidates] = useState<Contact[] | null>(null);
@@ -213,6 +216,43 @@ export function ChatView({
     return partial ?? null;
   };
 
+  const submitNewContactAddress = async (address: string, sourceLabel?: string) => {
+    if (!addingContactName) return;
+    if (sourceLabel) addMessage("user", sourceLabel);
+    try {
+      const newContact = await addContact({ name: addingContactName, address });
+      addMessage("assistant", `Added ${newContact.name} to your contacts! How much would you like to send?`);
+      setResolvedContact(newContact);
+      setAddingContactName(null);
+      setAwaiting("amount");
+    } catch {
+      addMessage("assistant", "That doesn't look like a valid Stellar address — it should be 56 characters starting with G. Try again.");
+    }
+  };
+
+  const handleQrImageSelected = async (file: File) => {
+    setQrImageError(null);
+    try {
+      const decoded = await decodeQrImage(file);
+      if (!decoded) {
+        setQrImageError("Couldn't find a QR code in that image — try a clearer screenshot.");
+        return;
+      }
+      await submitNewContactAddress(decoded, "📷 Scanned QR from image");
+    } catch {
+      setQrImageError("Couldn't read that image file.");
+    }
+  };
+
+  const handleGetFromFreighter = async () => {
+    const address = await connect();
+    if (!address) {
+      setQrImageError("Couldn't get an address from Freighter. Make sure it's unlocked.");
+      return;
+    }
+    await submitNewContactAddress(address, "🔗 Used address from Freighter");
+  };
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? inputValue).trim();
     if (!text) return;
@@ -250,16 +290,7 @@ export function ChatView({
     }
 
     if (addingContactName) {
-      addMessage("user", text);
-      try {
-        const newContact = await addContact({ name: addingContactName, address: text });
-        addMessage("assistant", `Added ${newContact.name} to your contacts! How much would you like to send?`);
-        setResolvedContact(newContact);
-        setAddingContactName(null);
-        setAwaiting("amount");
-      } catch {
-        addMessage("assistant", "That doesn't look like a valid Stellar address — it should be 56 characters starting with G. Try again.");
-      }
+      await submitNewContactAddress(text, text);
       return;
     }
 
@@ -534,6 +565,74 @@ if (awaiting === "amount") {
           flexShrink: 0,
         }}
       >
+        {addingContactName && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <input
+              ref={qrFileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleQrImageSelected(file);
+                e.target.value = ""; // allow re-selecting the same file next time
+              }}
+            />
+            <button
+              onClick={() => qrFileInputRef.current?.click()}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                padding: "10px 0",
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(37,99,235,0.2)",
+                color: "var(--foreground)",
+                fontSize: 12.5,
+                fontWeight: 600,
+                fontFamily: FF,
+                cursor: "pointer",
+              }}
+            >
+              <ImageIcon size={14} color="#60A5FA" />
+              Upload QR Image
+            </button>
+            <button
+              onClick={handleGetFromFreighter}
+              disabled={connectingWallet}
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                padding: "10px 0",
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(37,99,235,0.2)",
+                color: "var(--foreground)",
+                fontSize: 12.5,
+                fontWeight: 600,
+                fontFamily: FF,
+                cursor: connectingWallet ? "wait" : "pointer",
+                opacity: connectingWallet ? 0.6 : 1,
+              }}
+            >
+              <Link2 size={14} color="#60A5FA" />
+              {connectingWallet ? "Connecting…" : "Get from Freighter"}
+            </button>
+          </div>
+        )}
+
+        {addingContactName && qrImageError && (
+          <div style={{ color: "#F87171", fontSize: 12, fontFamily: FF, marginBottom: 8, textAlign: "center" }}>
+            {qrImageError}
+          </div>
+        )}
+
         <div
           style={{
             display: "flex",
@@ -547,7 +646,7 @@ if (awaiting === "amount") {
         >
           <input
             type="text"
-            placeholder='Try "Send ₱200 to Juan" or ask Rani anything...'
+            placeholder={addingContactName ? "Or paste the Stellar address here..." : 'Try "Send ₱200 to Juan" or ask Rani anything...'}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend(undefined)}
