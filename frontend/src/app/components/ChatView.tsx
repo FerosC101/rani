@@ -186,10 +186,68 @@ export function ChatView({
     }
   };
 
+  // Scoped matcher for a pending candidate-disambiguation reply. Does NOT
+  // touch parseCommand/regex/Gemini at all — a reply to "did you mean X?"
+  // is checked directly against the list we already showed the user,
+  // never sent back through the intent classifier.
+  const matchCandidateFromReply = (reply: string, list: Contact[]): Contact | null => {
+    const t = reply.trim().toLowerCase();
+
+    // "2" / "1" — numeric pick from the list we rendered
+    const asIndex = parseInt(t, 10);
+    if (!Number.isNaN(asIndex) && String(asIndex) === t && asIndex >= 1 && asIndex <= list.length) {
+      return list[asIndex - 1];
+    }
+
+    // single-candidate fuzzy-match confirmation ("Did you mean X?" -> "yes")
+    if (list.length === 1 && /^(yes|yep|yeah|sure|oo|opo|tama|correct)\b/i.test(t)) {
+      return list[0];
+    }
+
+    // exact or partial name match against the candidates actually shown
+    const exact = list.find((c) => c.name.toLowerCase() === t);
+    if (exact) return exact;
+    const partial = list.find(
+      (c) => c.name.toLowerCase().includes(t) || t.includes(c.name.toLowerCase())
+    );
+    return partial ?? null;
+  };
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? inputValue).trim();
     if (!text) return;
     if (!overrideText) setInputValue("");
+
+    // A candidate list is currently on screen — this message is an answer
+    // to "which one did you mean?", not a new command. Resolve it locally
+    // and return before parseCommand (regex/Gemini) ever sees it.
+    if (candidates && candidates.length > 0) {
+      addMessage("user", text);
+
+      if (candidates.length === 1 && /^(no|nope|hindi|wrong)\b/i.test(text.trim())) {
+        setCandidates(null);
+        addMessage("assistant", "No problem — who would you like to send to?");
+        setAwaiting("recipient");
+        return;
+      }
+
+      const picked = matchCandidateFromReply(text, candidates);
+      if (picked) {
+        setCandidates(null);
+        setResolvedContact(picked);
+        addMessage("assistant", `Got it — how much would you like to send to ${picked.name}?`);
+        setAwaiting("amount");
+        return;
+      }
+
+      addMessage(
+        "assistant",
+        candidates.length === 1
+          ? `Just to confirm — did you mean "${candidates[0].name}"? (yes/no)`
+          : `I'm still not sure which one — did you mean ${candidates.map((c) => c.name).join(" or ")}?`
+      );
+      return;
+    }
 
     if (addingContactName) {
       addMessage("user", text);
@@ -276,7 +334,10 @@ export function ChatView({
 if (awaiting === "amount") {
       addMessage("user", text);
       const match = text.match(/₱?\s?(\d+(?:\.\d+)?)/);
-      if (!match) return;
+      if (!match) {
+        addMessage("assistant", "I need a number — how much would you like to send?");
+        return;
+      }
       setAmount(match[1]);
       setAwaiting(null);
 
@@ -941,12 +1002,6 @@ function DisambiguationBlock({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <AIChatBubble>
-        I found{" "}
-        <span style={{ color: "var(--foreground)", fontWeight: 600 }}>{candidates.length} contacts</span>{" "}
-        — which one do you mean?
-      </AIChatBubble>
-
       <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 460 }}>
         {candidates.map((contact, i) => {
           const color = DISAMBIGUATION_COLORS[i % DISAMBIGUATION_COLORS.length];
