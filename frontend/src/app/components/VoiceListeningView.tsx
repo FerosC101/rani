@@ -92,10 +92,12 @@ export function VoiceListeningView({ userName = "there", onCancel, onSuccess }: 
         onSuccess(data.userTranscription, data.raniReply);
       } else {
         console.error("Voice transcription failed:", data);
+        alert(data.message || "Couldn't process that. Please use chat instead.");
         onCancel?.();
       }
     } catch (error) {
       console.error("Failed to send audio:", error);
+      alert("The voice command is currently timed-out. Please use chat instead.");
       onCancel?.();
     }
   };

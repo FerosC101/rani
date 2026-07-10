@@ -1,61 +1,49 @@
 import { Router } from 'express';
 import multer from 'multer';
+import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-type VoiceAiData = { userTranscription: string; raniReply: string };
+// ── Groq (primary) — dedicated Whisper transcription, fast + isolated quota ──
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
+const GROQ_STT_MODEL = process.env.GROQ_STT_MODEL || 'whisper-large-v3-turbo';
 
-/**
- * Gemini's `responseMimeType: "application/json"` mode is not a strict JSON
- * guarantee — it can still return text wrapped in a ```json fence, with
- * trailing commas, or with stray control characters. Try a plain parse
- * first, then fall back to a couple of cheap, common repairs before
- * giving up. Throws the original error if nothing works, so the caller's
- * catch block still logs it.
- */
-function parseGeminiJson(raw: string): VoiceAiData {
-  const attempts: Array<() => string> = [
-    () => raw,
-    // Strip ```json ... ``` or ``` ... ``` code fences some models add.
-    () => raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim(),
-    // Grab just the outermost { ... } in case there's leading/trailing prose.
-    () => {
-      const start = raw.indexOf('{');
-      const end = raw.lastIndexOf('}');
-      if (start === -1 || end === -1 || end <= start) return raw;
-      return raw.slice(start, end + 1);
-    },
-    // Remove raw control characters (unescaped newlines/tabs inside strings)
-    // that commonly break JSON parsing of transcribed speech.
-    () => raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''),
-  ];
+// ── Gemini (fallback only) — used solely if Groq is unavailable ──
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_VOICE_FALLBACK_MODEL || 'gemini-2.5-flash-lite';
 
-  let lastError: unknown;
-  for (const attempt of attempts) {
-    try {
-      const candidate = attempt();
-      const parsed = JSON.parse(candidate);
-      if (
-        parsed &&
-        typeof parsed.userTranscription === 'string' &&
-        typeof parsed.raniReply === 'string'
-      ) {
-        return parsed;
-      }
-      lastError = new Error('Parsed JSON missing expected fields');
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Failed to parse Gemini response');
+/** Errors worth retrying on a different provider: network issues, timeouts,
+ *  rate limits, and server-side failures. A 400 (e.g. bad/corrupt audio)
+ *  will fail on Gemini too, so don't waste a second call on those. */
+function isRetryableError(error: unknown): boolean {
+  const status = (error as { status?: number })?.status;
+  if (status === undefined) return true; // network/timeout error, no HTTP status
+  return status === 429 || status >= 500;
 }
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+async function transcribeWithGroq(buffer: Buffer, filename: string, mimetype: string): Promise<string> {
+  const file = new File([buffer], filename, { type: mimetype });
+  const result = await groq.audio.transcriptions.create({
+    file,
+    model: GROQ_STT_MODEL,
+  });
+  return result.text.trim();
+}
+
+async function transcribeWithGemini(buffer: Buffer, mimetype: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: GEMINI_FALLBACK_MODEL });
+  const audioPart = {
+    inlineData: {
+      data: buffer.toString('base64'),
+      mimeType: mimetype || 'audio/webm',
+    },
+  };
+  const prompt = 'Transcribe exactly what is said in this audio. Respond with the transcription only — no preamble, no quotes, no extra commentary.';
+  const result = await model.generateContent([prompt, audioPart]);
+  return result.response.text().trim();
+}
 
 router.post('/', upload.single('audio'), async (req, res) => {
   try {
@@ -65,64 +53,44 @@ router.post('/', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    console.log('🎤 Caught audio file! Sending to Gemini...');
+    console.log('🎤 Caught audio file! Sending to Groq for transcription...');
 
-    // Sets up the Gemini model — configurable via GEMINI_MODEL env var
-    const model = genAI.getGenerativeModel({ 
-      model: GEMINI_MODEL,
-      generationConfig: {
-        responseMimeType: "application/json",
+    let userTranscription: string;
+
+    try {
+      userTranscription = await transcribeWithGroq(
+        audioFile.buffer,
+        audioFile.originalname || 'audio.webm',
+        audioFile.mimetype || 'audio/webm'
+      );
+    } catch (groqError) {
+      if (!isRetryableError(groqError)) {
+        throw groqError; // bad audio etc. — no point trying Gemini too
       }
-    });
+      console.warn('⚠️ Groq STT failed, falling back to Gemini:', groqError);
+      userTranscription = await transcribeWithGemini(audioFile.buffer, audioFile.mimetype || 'audio/webm');
+    }
 
-    // Convert the audio buffer into the format Gemini wants
-    const audioPart = {
-      inlineData: {
-        data: audioFile.buffer.toString("base64"),
-        mimeType: audioFile.mimetype || 'audio/webm',
-      },
-    };
+    console.log(`🗣️ You said: "${userTranscription}"`);
 
-    // Tells Gemini exactly what to do and how to structure the output
-    const prompt = `
-      You are Rani, a helpful, concise AI financial assistant. 
-      Listen to the user's voice message. 
-      
-      Respond with a JSON object using this exact structure:
-      {
-        "userTranscription": "Exactly what the user said in the audio",
-        "raniReply": "Your short 1-2 sentence response to the user as Rani"
-      }
-    `;
-
-    // For sending
-    const result = await model.generateContent([prompt, audioPart]);
-    const responseText = result.response.text();
-
-    // Log the raw text so malformed responses are easy to diagnose instead of
-    // just seeing "SyntaxError: Expected ',' or '}'" with no context.
-    console.log('📩 Raw Gemini response:', responseText);
-
-    // Parsing JSON response from Gemini. Gemini's JSON mode can still return
-    // text that isn't strictly valid JSON (e.g. an unescaped quote/apostrophe
-    // inside the transcribed speech, or the model wrapping the object in a
-    // ```json code fence). Try a straight parse first, then fall back to a
-    // couple of common repairs before giving up.
-    const aiData = parseGeminiJson(responseText);
-
-    console.log(`🗣️ You said: "${aiData.userTranscription}"`);
-    console.log(`🤖 Rani says: "${aiData.raniReply}"`);
-
-    // Sends data back to frontend
-    res.json({ 
-      success: true, 
-      userTranscription: aiData.userTranscription, 
-      raniReply: aiData.raniReply 
+    // Voice is transcription-only. The transcript is handed to the same
+    // /parse pipeline chat uses (parseCommand -> nlp.ts -> geminiFallback.ts),
+    // so intent parsing, disambiguation, and replies are already unified —
+    // no need to generate a reply here.
+    res.json({
+      success: true,
+      userTranscription,
     });
 
   } catch (error) {
-    console.error('❌ AI Processing Error:', error);
-    res.status(500).json({ error: 'Internal server error processing voice' });
+    console.error('❌ Voice transcription error (both Groq and Gemini failed or were skipped):', error);
+    // Both providers are unavailable/failed. Give the user a clear, actionable
+    // message instead of a generic error — they can still use chat.
+    res.status(503).json({
+      success: false,
+      error: 'voice_unavailable',
+      message: 'The voice command is currently timed-out. Please use chat instead.',
+    });
   }
 });
 

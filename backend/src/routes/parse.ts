@@ -4,6 +4,7 @@ import { supabase } from "../db";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
 import { parseCommand } from "../lib/nlp";
 import { geminiParseCommand } from "../lib/geminiFallback";
+import { rankContactsByName } from "../lib/fuzzyMatch";
 
 export const parseRouter = Router();
 parseRouter.use(requireAuth);
@@ -42,7 +43,29 @@ parseRouter.post("/", async (req: AuthedRequest, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  if (matches.length === 0) {
+  let resolvedMatches = matches;
+  let isFuzzyMatch = false;
+
+  // No exact/substring match — this is expected for voice input, since
+  // STT rarely produces byte-perfect spelling ("Malik" for a contact saved
+  // as "Mhalik", "Sophia" for "Sofhia"). Fall back to fuzzy name matching
+  // against the user's full contact list before giving up.
+  if (resolvedMatches.length === 0) {
+    const { data: allContacts, error: allContactsError } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("user_id", req.userId!);
+
+    if (allContactsError) return res.status(500).json({ error: allContactsError.message });
+
+    const ranked = rankContactsByName(allContacts ?? [], command.recipientName, (c: any) => c.name);
+    if (ranked.length > 0) {
+      resolvedMatches = ranked.map((r) => r.contact);
+      isFuzzyMatch = true;
+    }
+  }
+
+  if (resolvedMatches.length === 0) {
     return res.json({
       ...command,
       needsClarification: true,
@@ -50,18 +73,30 @@ parseRouter.post("/", async (req: AuthedRequest, res) => {
     });
   }
 
-  if (matches.length > 1) {
+  if (resolvedMatches.length > 1) {
     return res.json({
       ...command,
       needsClarification: true,
       clarificationReason: `Multiple contacts match "${command.recipientName}" — which one?`,
-      candidates: matches,
+      candidates: resolvedMatches,
+    });
+  }
+
+  // Fuzzy (non-exact) single match: still worth a quick confirm rather than
+  // silently resolving, since a wrong silent match here means money sent
+  // to the wrong person.
+  if (isFuzzyMatch) {
+    return res.json({
+      ...command,
+      needsClarification: true,
+      clarificationReason: `Did you mean "${resolvedMatches[0].name}"?`,
+      candidates: resolvedMatches,
     });
   }
 
   return res.json({
     ...command,
-    resolvedContact: matches[0],
+    resolvedContact: resolvedMatches[0],
     needsClarification: !command.amount,
     clarificationReason: !command.amount ? "How much would you like to send?" : undefined,
   });

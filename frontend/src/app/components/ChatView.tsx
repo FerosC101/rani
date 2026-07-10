@@ -215,7 +215,7 @@ export function ChatView({
         // user retypes a whole command instead of just a bare name.
         const result = await parseCommand(text);
 
-        if (result.candidates && result.candidates.length > 1) {
+        if (result.candidates && result.candidates.length >= 1) {
           addMessage("assistant", result.clarificationReason ?? `I found ${result.candidates.length} contacts — which one do you mean?`);
           setCandidates(result.candidates);
           return;
@@ -312,7 +312,7 @@ if (awaiting === "amount") {
       if (result.needsClarification) {
         addMessage("assistant", result.clarificationReason ?? "Could you clarify that?");
 
-        if (result.candidates && result.candidates.length > 1) {
+        if (result.candidates && result.candidates.length >= 1) {
           setCandidates(result.candidates);
         } else if (result.resolvedContact) {
           setResolvedContact(result.resolvedContact);
@@ -841,7 +841,7 @@ function ChatThread({
                 maxWidth: 360,
               }}
             >
-              <p style={{ color: "#fff", fontSize: 14, fontFamily: FF, lineHeight: 1.5, margin: 0 }}>
+              <p style={{ color: "#fff", fontSize: 14, fontFamily: FF, lineHeight: 1.5, margin: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
                 {m.text}
               </p>
             </div>
