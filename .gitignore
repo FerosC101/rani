@@ -1,0 +1,22 @@
+﻿# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment variables — NEVER commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Database files — should never be committed
+*.db
+*.sqlite
+
+# Logs
+*.log
+
+# OS/editor junk
+.DS_Store
+.vscode/

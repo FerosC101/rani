@@ -1,0 +1,40 @@
+# Render blueprint for the Rani backend (Express + TypeScript).
+# Import at https://render.com → New → Blueprint, pointed at this repo.
+# A long-running host (not serverless) so /transactions/submit can poll up to 60s.
+services:
+  - type: web
+    name: rani-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    # --include=dev ensures typescript/tsc are available even if NODE_ENV=production.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: node dist/server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # ── Secrets — set these in the Render dashboard (sync:false = not in git) ──
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # CORS_ORIGINS: your deployed frontend origin, e.g. https://rani.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      # JWT_SECRET: Render generates a strong random value (replaces the insecure
+      # "change-me-in-prod" placeholder). Never expose or commit this.
+      - key: JWT_SECRET
+        generateValue: true
+      # ── Stellar testnet config (safe, public defaults) ──
+      - key: SOROBAN_RPC
+        value: https://soroban-testnet.stellar.org
+      - key: HORIZON_URL
+        value: https://horizon-testnet.stellar.org
+      - key: FRIENDBOT_URL
+        value: https://friendbot.stellar.org
+      - key: NETWORK
+        value: testnet
+      - key: USDC_ISSUER
+        value: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
