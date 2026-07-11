@@ -172,7 +172,9 @@ export function ChatView({
         signedXdr,
       });
 
-      setTxHash(result.stellarTxHash);
+      // Backend returns the raw DB row (snake_case). Read stellar_tx_hash, with
+      // a camelCase fallback in case the API is ever normalized.
+      setTxHash((result as any).stellar_tx_hash ?? (result as any).stellarTxHash ?? null);
       setState("success");
       confetti({
         particleCount: 220,
@@ -1113,7 +1115,7 @@ function ChatThread({
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2 }}
               >
-                <SuccessBlock onReset={onReset} txHash={txHash} />
+                <SuccessBlock onReset={onReset} txHash={txHash} amount={amount} />
 
               </motion.div>
             )}
@@ -1600,7 +1602,7 @@ function ConfirmModal({
                 lineHeight: 1,
               }}
             >
-              ₱{amount}
+              {amount} XLM
             </div>
           </div>
           <ArrowRight size={20} color="var(--muted-foreground)" />
@@ -1628,7 +1630,7 @@ function ConfirmModal({
                 lineHeight: 1,
               }}
             >
-              8.5 USDC
+              {amount} XLM
             </div>
           </div>
         </div>
@@ -1772,7 +1774,7 @@ function ConfirmModal({
    STATE 5 — SUCCESS RECEIPT
 ═══════════════════════════════════════════════════════════════════ */
 
-function SuccessBlock({ onReset, txHash }: { onReset: () => void; txHash: string | null }) {
+function SuccessBlock({ onReset, txHash, amount }: { onReset: () => void; txHash: string | null; amount: string | null }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <AIChatBubble>🎉 Payment sent successfully! Here's your receipt:</AIChatBubble>
@@ -1873,7 +1875,7 @@ function SuccessBlock({ onReset, txHash }: { onReset: () => void; txHash: string
                   lineHeight: 1,
                 }}
               >
-                ₱500.00
+                {amount ?? "—"} XLM
               </div>
             </div>
             <ArrowRight size={22} color="#4ADE80" />
@@ -1901,7 +1903,7 @@ function SuccessBlock({ onReset, txHash }: { onReset: () => void; txHash: string
                   lineHeight: 1,
                 }}
               >
-                8.5 USDC
+                {amount ?? "—"} XLM
               </div>
             </div>
           </div>
