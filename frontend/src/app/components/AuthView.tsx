@@ -7,6 +7,7 @@ const FF = "'DM Sans', sans-serif";
 
 interface AuthViewProps {
   onConnect: () => void;
+  onDemo: () => void;
   busy?: boolean;
 }
 
@@ -14,7 +15,7 @@ interface AuthViewProps {
    ROOT
 ═══════════════════════════════════════════════════════════════════ */
 
-export function AuthView({ onConnect, busy = false }: AuthViewProps) {
+export function AuthView({ onConnect, onDemo, busy = false }: AuthViewProps) {
   const [hoverF, setHoverF] = useState(false);
   const [hoverX, setHoverX] = useState(false);
   const isMobile = useIsMobile();
@@ -310,30 +311,39 @@ export function AuthView({ onConnect, busy = false }: AuthViewProps) {
               <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
             </div>
 
-            {/* Secondary — xBull */}
+            {/* Secondary — Demo Mode (no wallet needed; browse only, can't sign) */}
             <button
+              onClick={onDemo}
+              disabled={busy}
               onMouseEnter={() => setHoverX(true)}
               onMouseLeave={() => setHoverX(false)}
               style={{
                 width: "100%",
-                padding: "16px 0",
+                padding: "14px 0",
                 borderRadius: 14,
                 background: hoverX ? "rgba(255,255,255,0.06)" : "transparent",
                 border: "1.5px solid rgba(255,255,255,0.12)",
-                cursor: "pointer",
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.6 : 1,
                 color: "#E2EEFF",
                 fontSize: 15,
                 fontWeight: 600,
                 fontFamily: FF,
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
+                gap: 2,
                 transition: "background 150ms",
               }}
             >
-              <Shield size={17} color="#7B92B0" />
-              Connect xBull Wallet
+              <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <Shield size={17} color="#7B92B0" />
+                Try Demo Mode
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: "#4A6080" }}>
+                Browse the app — no wallet, no real transactions
+              </span>
             </button>
           </div>
 

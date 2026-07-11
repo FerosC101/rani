@@ -36,28 +36,28 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const handleConnect = async () => {
+  // Two explicit entry points, both routed through here:
+  //  - demo:false → real Freighter (signs real transactions)
+  //  - demo:true  → a throwaway identity for browsing the UI with no wallet
+  //                 installed (can't sign, so payments/swaps won't submit)
+  const runConnect = async (opts: { demo?: boolean } = {}) => {
     if (busy) return; // guard against double-taps
     setAuthError(null);
     setBusy(true);
 
     try {
-      const publicKey = await connect();
+      let walletPublicKey: string | null;
 
-      let walletPublicKey = publicKey;
-      if (!walletPublicKey) {
-        // Real Freighter is required. Only fall back to a throwaway demo
-        // identity when explicitly enabled (VITE_ALLOW_DEMO_WALLET=true) for
-        // local UI work — never in the deployed demo, where a fake account
-        // that can't sign real transactions would be misleading.
-        if (import.meta.env.VITE_ALLOW_DEMO_WALLET === "true") {
-          const fallbackId =
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-          walletPublicKey = `demo-wallet-${fallbackId}`;
-        } else {
-          setAuthError("Freighter wallet not found. Install the Freighter extension (freighter.app), then try again.");
+      if (opts.demo) {
+        const fallbackId =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        walletPublicKey = `demo-wallet-${fallbackId}`;
+      } else {
+        walletPublicKey = await connect();
+        if (!walletPublicKey) {
+          setAuthError("Freighter wallet not found. Install the Freighter extension (freighter.app), then try again — or use Demo Mode.");
           return;
         }
       }
@@ -78,11 +78,14 @@ export default function App() {
     }
   };
 
+  const handleConnect = () => runConnect();
+  const handleDemo = () => runConnect({ demo: true });
+
   /* ── Auth frame ── */
   if (screen === "auth") {
     return (
       <>
-        <AuthView onConnect={handleConnect} busy={busy || connecting} />
+        <AuthView onConnect={handleConnect} onDemo={handleDemo} busy={busy || connecting} />
         {(busy || connecting) && (
           <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", color: "#fff", background: "#1D4ED8", padding: "8px 16px", borderRadius: 8, fontFamily: FF, display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block" }} className="animate-spin" />
