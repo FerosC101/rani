@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { Wallet, Lock, Shield, Zap } from "lucide-react";
 import { useIsMobile } from "./ui/use-mobile";
+import raniLogo from "../../RANI.png";
 
 const FF = "'DM Sans', sans-serif";
 
@@ -189,43 +190,14 @@ export function AuthView({ onConnect, onDemo, busy = false }: AuthViewProps) {
           }}
         >
           {/* Branding */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 13,
-              marginBottom: 36,
-            }}
-          >
-            <div
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 15,
-                background: "#2563EB",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 8px 20px rgba(37,99,235,0.4)",
-              }}
-            >
-              <Wallet size={23} color="#fff" strokeWidth={2} />
-            </div>
-            <div>
-              <div
-                style={{
-                  color: "#F0F6FF",
-                  fontSize: 22,
-                  fontWeight: 700,
-                  fontFamily: FF,
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                Rani
-              </div>
-              <div style={{ color: "#3A5070", fontSize: 12, fontFamily: FF }}>
-                Financial AI
-              </div>
+          <div style={{ marginBottom: 36 }}>
+            <img
+              src={raniLogo}
+              alt="Rani"
+              style={{ width: 132, height: 54, objectFit: "cover", display: "block", filter: "brightness(0) invert(1)" }}
+            />
+            <div style={{ color: "#3A5070", fontSize: 12, fontFamily: FF, marginTop: 8, marginLeft: 2 }}>
+              Financial AI
             </div>
           </div>
 

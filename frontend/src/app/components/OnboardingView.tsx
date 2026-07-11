@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Wallet, Sparkles, Lock } from "lucide-react";
+import raniLogo from "../../RANI.png";
 
 const FF = "'DM Sans', sans-serif";
 
@@ -135,46 +136,12 @@ export function OnboardingView({ onContinue }: OnboardingViewProps) {
         </div>
 
         {/* Branding */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 13,
-            marginBottom: 30,
-          }}
-        >
-          <div
-            style={{
-              width: 50,
-              height: 50,
-              borderRadius: 15,
-              background: "#2563EB",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 6px 18px rgba(37,99,235,0.4)",
-            }}
-          >
-            <Wallet size={22} color="#fff" strokeWidth={2} />
-          </div>
-          <div>
-            <div
-              style={{
-                color: "#F0F6FF",
-                fontSize: 22,
-                fontWeight: 700,
-                fontFamily: FF,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              Rani
-            </div>
-            <div
-              style={{ color: "#3A5070", fontSize: 12, fontFamily: FF }}
-            >
-              Financial AI
-            </div>
-          </div>
+        <div style={{ marginBottom: 30 }}>
+          <img
+            src={raniLogo}
+            alt="Rani"
+            style={{ width: 128, height: 52, objectFit: "cover", display: "block", filter: "brightness(0) invert(1)" }}
+          />
         </div>
 
         {/* Headline */}

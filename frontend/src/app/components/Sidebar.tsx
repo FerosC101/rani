@@ -4,7 +4,6 @@ import {
   Users,
   Clock,
   Settings,
-  Wallet,
   Bell,
   Mic,
   Sun,
@@ -13,6 +12,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { NotificationsDropdown } from "./NotificationsDropdown";
+import raniLogo from "../../RANI.png";
 
 const FF = "'DM Sans', sans-serif";
 
@@ -73,36 +73,20 @@ export function Sidebar({ activeView, onNavigate, isDarkMode, toggleTheme, userN
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            padding: "18px 0 12px",
+            padding: "18px 0 14px",
           }}
         >
-          <div
+          <img
+            src={raniLogo}
+            alt="Rani"
             style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              background: "#2563EB",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 5,
-              boxShadow: "0 4px 12px rgba(37,99,235,0.35)",
+              width: 50,
+              height: 22,
+              objectFit: "cover",
+              display: "block",
+              filter: isDarkMode ? "brightness(0) invert(1)" : "none",
             }}
-          >
-            <Wallet size={18} color="#fff" strokeWidth={2} />
-          </div>
-          <span
-            style={{
-              color: "rgba(255,255,255,0.2)",
-              fontSize: 9,
-              letterSpacing: "0.12em",
-              fontFamily: FF,
-              fontWeight: 600,
-              textTransform: "uppercase",
-            }}
-          >
-            RANI
-          </span>
+          />
         </div>
 
         <div
