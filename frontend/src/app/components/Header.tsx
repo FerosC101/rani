@@ -1,8 +1,14 @@
+import { useEffect, useState } from "react";
 import { Sparkles, TrendingUp } from "lucide-react";
+import { getRate } from "../../lib/api";
 
 const FF = "'DM Sans', sans-serif";
 
 export function Header() {
+  const [rate, setRate] = useState<number | null>(null);
+  useEffect(() => {
+    getRate().then((r) => setRate(r.phpPerXlm)).catch(() => {});
+  }, []);
   return (
     <div
       style={{
@@ -81,7 +87,7 @@ export function Header() {
             fontFamily: FF,
           }}
         >
-          XLM ₱8.24
+          XLM ₱{rate ? rate.toFixed(2) : "…"}
         </span>
         <span style={{ color: "#22C55E", fontSize: 11, fontFamily: FF }}>
           +2.1%

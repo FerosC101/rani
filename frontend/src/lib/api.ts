@@ -93,6 +93,9 @@ export const parseCommand = (text: string) =>
 // ── Transactions ──────────────────────────────────────────────────
 export const getBalance = () => request<{ xlm: string; usdc: string }>("/transactions/balance");
 
+// Live price of 1 XLM in PHP (used to convert a peso amount into XLM to send).
+export const getRate = () => request<{ phpPerXlm: number }>("/transactions/rate");
+
 export const simulatePayment = (data: {
   destinationAssetCode: string;
   destinationAssetIssuer?: string;

@@ -11,6 +11,35 @@ import { findSwapQuote, applySlippage, buildSwapXDR } from "../lib/swap";
 export const transactionsRouter = Router();
 transactionsRouter.use(requireAuth);
 
+// ── XLM/PHP rate ─────────────────────────────────────────────────────
+// Live price of 1 XLM in PHP, from CoinGecko, cached 60s. Used to convert a
+// peso amount the user types into the XLM actually sent on-chain. Falls back
+// to a sane constant so a send never blocks on the price feed.
+const FALLBACK_PHP_PER_XLM = 8.24;
+let rateCache: { phpPerXlm: number; ts: number } | null = null;
+
+export async function getPhpPerXlm(): Promise<number> {
+  if (rateCache && Date.now() - rateCache.ts < 60_000) return rateCache.phpPerXlm;
+  try {
+    const r = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=php"
+    );
+    const d = (await r.json()) as { stellar?: { php?: number } };
+    const v = d?.stellar?.php;
+    if (typeof v === "number" && v > 0) {
+      rateCache = { phpPerXlm: v, ts: Date.now() };
+      return v;
+    }
+  } catch {
+    /* price feed down — use last cache or fallback */
+  }
+  return rateCache?.phpPerXlm ?? FALLBACK_PHP_PER_XLM;
+}
+
+transactionsRouter.get("/rate", async (_req: AuthedRequest, res) => {
+  res.json({ phpPerXlm: await getPhpPerXlm() });
+});
+
 transactionsRouter.get("/balance", async (req: AuthedRequest, res) => {
   const { data: user, error } = await supabase
     .from("users")

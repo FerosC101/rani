@@ -13,7 +13,7 @@ import { Header } from "./Header";
 import { SEP24Modal } from "./SEP24Modal";
 import { SwapModal } from "./SwapModal";
 //import { buildTransaction, submitTransaction, getBalance, type Contact } from "../../lib/api";
-import { getBalance, addContact, parseCommand, buildTransaction, submitTransaction, type Contact } from "../../lib/api";
+import { getBalance, getRate, addContact, parseCommand, buildTransaction, submitTransaction, type Contact } from "../../lib/api";
 import { decodeQrImage } from "../../lib/decodeQrImage";
 import { useWallet } from "../../hooks/useWallet";
 import {
@@ -109,6 +109,10 @@ export function ChatView({
   const [candidates, setCandidates] = useState<Contact[] | null>(null);
   const [resolvedContact, setResolvedContact] = useState<Contact | null>(null);
   const [amount, setAmount] = useState<string | null>(null);
+  // amount is the PESO amount the user typed. xlmAmount is what actually gets
+  // sent on-chain after converting at the live XLM/PHP rate.
+  const [xlmAmount, setXlmAmount] = useState<string | null>(null);
+  const [phpPerXlm, setPhpPerXlm] = useState<number>(8.24); // fallback until fetched
   const [balance, setBalance] = useState<Balance | null>(null);
   const [notFoundName, setNotFoundName] = useState<string | null>(null);
   const [memo, setMemo] = useState<string | null>(null);
@@ -206,6 +210,13 @@ export function ChatView({
     }
   };
 
+  // Fetch the live XLM/PHP rate once, to convert peso amounts into XLM.
+  useEffect(() => {
+    getRate()
+      .then((r) => r?.phpPerXlm && setPhpPerXlm(r.phpPerXlm))
+      .catch(() => {/* keep fallback */});
+  }, []);
+
   const prepareConfirm = async () => {
     setConfirmError(null);
     setFeeXLM(null);
@@ -213,12 +224,16 @@ export function ChatView({
 
     if (!resolvedContact || !amount) return;
 
-    console.log("prepareConfirm called", { resolvedContact, amount });
+    // The user types pesos; convert to the XLM actually sent on-chain.
+    const rate = phpPerXlm > 0 ? phpPerXlm : 8.24;
+    const xlm = (parseFloat(amount) / rate).toFixed(7);
+    setXlmAmount(xlm);
+
     setPreparing(true);
     try {
       const built = await buildTransaction({
         contactId: resolvedContact.id,
-        amount,
+        amount: xlm, // send the converted XLM amount, not the raw peso number
         assetCode: "XLM",
         memo: memo ?? undefined,
       });
@@ -815,6 +830,7 @@ if (awaiting === "amount") {
                 notFoundName={notFoundName}
                 resolvedContact={resolvedContact}
                 amount={amount}
+                xlmAmount={xlmAmount}
                 balance={balance}
                 txHash={txHash}
                 onSelectCandidate={handleSelectCandidate}
@@ -1016,6 +1032,7 @@ if (awaiting === "amount") {
               <ConfirmModal
                 recipient={resolvedContact!}
                 amount={amount!}
+                xlmAmount={xlmAmount}
                 memo={memo}
                 feeXLM={feeXLM}
                 confirming={confirming}
@@ -1235,6 +1252,7 @@ function ChatThread({
   notFoundName,
   resolvedContact,
   amount,
+  xlmAmount,
   balance,
   txHash,
   onSelectCandidate,
@@ -1249,6 +1267,7 @@ function ChatThread({
   notFoundName: string | null;
   resolvedContact: Contact | null;
   amount: string | null;
+  xlmAmount: string | null;
   balance: { xlm: string; usdc: string } | null;
   txHash: string | null;
   onSelectCandidate: (c: Contact) => void;
@@ -1344,7 +1363,7 @@ function ChatThread({
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2 }}
               >
-                <SuccessBlock onReset={onReset} txHash={txHash} amount={amount} />
+                <SuccessBlock onReset={onReset} txHash={txHash} amount={amount} xlmAmount={xlmAmount} />
 
               </motion.div>
             )}
@@ -1687,6 +1706,7 @@ function SummaryBlock({
 function ConfirmModal({
   recipient,
   amount,
+  xlmAmount,
   memo,
   feeXLM,
   confirming,
@@ -1697,6 +1717,7 @@ function ConfirmModal({
 }: {
   recipient: Contact;
   amount: string;
+  xlmAmount: string | null;
   memo: string | null;
   feeXLM: string | null;
   confirming: boolean;
@@ -1831,7 +1852,7 @@ function ConfirmModal({
                 lineHeight: 1,
               }}
             >
-              {amount} XLM
+              ₱{amount}
             </div>
           </div>
           <ArrowRight size={20} color="var(--muted-foreground)" />
@@ -1859,7 +1880,7 @@ function ConfirmModal({
                 lineHeight: 1,
               }}
             >
-              {amount} XLM
+              {xlmAmount ?? "…"} XLM
             </div>
           </div>
         </div>
@@ -2003,7 +2024,7 @@ function ConfirmModal({
    STATE 5 — SUCCESS RECEIPT
 ═══════════════════════════════════════════════════════════════════ */
 
-function SuccessBlock({ onReset, txHash, amount }: { onReset: () => void; txHash: string | null; amount: string | null }) {
+function SuccessBlock({ onReset, txHash, amount, xlmAmount }: { onReset: () => void; txHash: string | null; amount: string | null; xlmAmount: string | null }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <AIChatBubble>🎉 Payment sent successfully! Here's your receipt:</AIChatBubble>
@@ -2104,7 +2125,7 @@ function SuccessBlock({ onReset, txHash, amount }: { onReset: () => void; txHash
                   lineHeight: 1,
                 }}
               >
-                {amount ?? "—"} XLM
+                ₱{amount ?? "—"}
               </div>
             </div>
             <ArrowRight size={22} color="#4ADE80" />
@@ -2132,7 +2153,7 @@ function SuccessBlock({ onReset, txHash, amount }: { onReset: () => void; txHash
                   lineHeight: 1,
                 }}
               >
-                {amount ?? "—"} XLM
+                {xlmAmount ?? "—"} XLM
               </div>
             </div>
           </div>
